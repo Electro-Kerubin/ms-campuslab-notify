@@ -19,7 +19,7 @@ import org.springframework.context.annotation.ComponentScan;
  * Nota: Este servicio no tiene BD propia ni expone endpoints públicos
  */
 @SpringBootApplication
-@ComponentScan(basePackages = "org.campuslab.notify")
+@ComponentScan(basePackages = {"org.campuslab.notify", "com.campuslab.notify"})
 public class NotifyServiceApplication {
 
     public static void main(String[] args) {
