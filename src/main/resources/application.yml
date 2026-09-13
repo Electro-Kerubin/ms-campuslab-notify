@@ -1,14 +1,6 @@
 spring:
-  application:
-    name: ms-campuslab-notify
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER:guest}
-    password: ${RABBITMQ_PASS:guest}
-    listener:
-      simple:
-        acknowledge-mode: manual # Fundamental para hacer ACK/NACK explícitos
-        retry:
-          enabled: true
-          max-attempts: 3
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
