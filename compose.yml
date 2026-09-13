@@ -1,0 +1,16 @@
+services:
+  notify-svc:
+    build: .
+    environment:
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq-node-1}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASS:-guest}
+    networks:
+      - campuslab-network
+
+networks:
+  campuslab-network:
+    name: campuslab-network
