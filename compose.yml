@@ -1,0 +1,43 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.0-management
+    container_name: campuslab-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+      RABBITMQ_NODE_IP_ADDRESS: 0.0.0.0
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit loopback_users []"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - campuslab-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  notify-svc:
+    build: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - campuslab-network
+
+networks:
+  campuslab-network:
+    name: campuslab-network
+
+volumes:
+  rabbitmq_data:
