@@ -1,12 +1,22 @@
 package org.campuslab.notify.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.listener.ConditionalRejectingErrorHandler;
+import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.DefaultJackson2JavaTypeMapper;
+import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -25,9 +35,11 @@ public class RabbitMQConfig {
     private static final String PREP_DLQ = "q.cmd.prep.dlq";
     private static final String VOUCHER_DLQ = "q.cmd.voucher.dlq";
 
-    private static final String EMAIL_DLQ_ROUTING_KEY = "email.dlq";
-    private static final String PREP_DLQ_ROUTING_KEY = "prep.dlq";
-    private static final String VOUCHER_DLQ_ROUTING_KEY = "voucher.dlq";
+    private static final String EMAIL_DLQ_ROUTING_KEY = EMAIL_DLQ;
+    private static final String PREP_DLQ_ROUTING_KEY = PREP_DLQ;
+    private static final String VOUCHER_DLQ_ROUTING_KEY = VOUCHER_DLQ;
+    private static final String DEAD_LETTER_EXCHANGE_ARGUMENT = "x-dead-letter-exchange";
+    private static final String DEAD_LETTER_ROUTING_KEY_ARGUMENT = "x-dead-letter-routing-key";
 
     @Bean
     public DirectExchange commandDirectExchange() {
@@ -47,24 +59,24 @@ public class RabbitMQConfig {
     @Bean
     public Queue emailQueue() {
         return QueueBuilder.durable(EMAIL_QUEUE)
-                .withArgument("x-dead-letter-exchange", CMD_DEAD_EXCHANGE)
-                .withArgument("x-dead-letter-routing-key", EMAIL_DLQ_ROUTING_KEY)
+                .withArgument(DEAD_LETTER_EXCHANGE_ARGUMENT, CMD_DEAD_EXCHANGE)
+                .withArgument(DEAD_LETTER_ROUTING_KEY_ARGUMENT, EMAIL_DLQ_ROUTING_KEY)
                 .build();
     }
 
     @Bean
     public Queue prepQueue() {
         return QueueBuilder.durable(PREP_QUEUE)
-                .withArgument("x-dead-letter-exchange", CMD_DEAD_EXCHANGE)
-                .withArgument("x-dead-letter-routing-key", PREP_DLQ_ROUTING_KEY)
+                .withArgument(DEAD_LETTER_EXCHANGE_ARGUMENT, CMD_DEAD_EXCHANGE)
+                .withArgument(DEAD_LETTER_ROUTING_KEY_ARGUMENT, PREP_DLQ_ROUTING_KEY)
                 .build();
     }
 
     @Bean
     public Queue voucherQueue() {
         return QueueBuilder.durable(VOUCHER_QUEUE)
-                .withArgument("x-dead-letter-exchange", CMD_DEAD_EXCHANGE)
-                .withArgument("x-dead-letter-routing-key", VOUCHER_DLQ_ROUTING_KEY)
+                .withArgument(DEAD_LETTER_EXCHANGE_ARGUMENT, CMD_DEAD_EXCHANGE)
+                .withArgument(DEAD_LETTER_ROUTING_KEY_ARGUMENT, VOUCHER_DLQ_ROUTING_KEY)
                 .build();
     }
 
@@ -154,6 +166,32 @@ public class RabbitMQConfig {
 
     @Bean
     public Jackson2JsonMessageConverter jackson2JsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+        ObjectMapper mapper = new ObjectMapper()
+                .findAndRegisterModules()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter(mapper);
+        DefaultJackson2JavaTypeMapper typeMapper = new DefaultJackson2JavaTypeMapper();
+        typeMapper.setTrustedPackages("*");
+        typeMapper.setTypePrecedence(Jackson2JavaTypeMapper.TypePrecedence.INFERRED);
+        converter.setJavaTypeMapper(typeMapper);
+        return converter;
+    }
+
+    @Bean
+    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
+            ConnectionFactory connectionFactory,
+            Jackson2JsonMessageConverter converter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setMessageConverter(converter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        factory.setDefaultRequeueRejected(false);
+        factory.setAdviceChain(RetryInterceptorBuilder.stateless()
+                .maxAttempts(3)
+                .backOffOptions(500, 2.0, 5000)
+                .recoverer(new RejectAndDontRequeueRecoverer())
+                .build());
+        factory.setErrorHandler(new ConditionalRejectingErrorHandler());
+        return factory;
     }
 }

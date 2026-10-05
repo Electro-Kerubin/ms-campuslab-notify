@@ -1,6 +1,7 @@
 services:
   rabbitmq:
     image: rabbitmq:4.0-management
+    profiles: ["local-dev"]
     container_name: campuslab-rabbitmq
     ports:
       - "5672:5672"
@@ -22,16 +23,24 @@ services:
 
   notify-svc:
     build: .
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
-      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES:-}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-ec2-mq}
       RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_AUTH: ${SMTP_AUTH:-false}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      MANAGEMENT_PORT: ${MANAGEMENT_PORT:-8081}
+      NOTIFY_IDEMPOTENCY_TTL: ${NOTIFY_IDEMPOTENCY_TTL:-PT24H}
+      VOUCHER_OUTPUT_DIR: ${VOUCHER_OUTPUT_DIR:-/tmp/notify-vouchers}
+    ports:
+      - "${NOTIFY_MANAGEMENT_PORT:-8081}:8081"
     networks:
       - campuslab-network
 
