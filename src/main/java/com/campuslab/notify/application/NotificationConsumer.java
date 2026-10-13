@@ -9,6 +9,7 @@ import com.campuslab.notify.domain.model.MessageEnvelope;
 import com.campuslab.notify.domain.model.PrepPayload;
 
 import com.rabbitmq.client.Channel;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
@@ -17,8 +18,11 @@ import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class NotificationConsumer {
 
+    private final RetryRunner retryRunner;
+    private final FailureSimulator failureSimulator;
     private final Set<String> processedEvents = ConcurrentHashMap.newKeySet();
 
     @RabbitListener(queues = "q.cmd.email")
@@ -34,11 +38,14 @@ public class NotificationConsumer {
             }
 
             EmailPayload payload = envelope.getPayload();
-            log.info("Procesando email para {}, asunto: {}", payload.getTo(), payload.getSubject());
+            retryRunner.run(() -> {
+                failureSimulator.maybeFail("email " + eventId);
+                log.info("Procesando email para {}, asunto: {}", payload.getTo(), payload.getSubject());
+            });
             processedEvents.add(eventId);
             channel.basicAck(tag, false);
         } catch (Exception exception) {
-            log.error("Error procesando mensaje de email", exception);
+            log.error("[→ DLX] No se pudo procesar el email, se envía a la DLQ", exception);
             channel.basicNack(tag, false, false);
         }
     }
@@ -56,12 +63,15 @@ public class NotificationConsumer {
             }
 
             PrepPayload payload = envelope.getPayload();
-            log.info("Procesando preparación para técnico {} en laboratorio {}. Requisitos: {}",
-                    payload.getTechnicianId(), payload.getLabId(), payload.getRequirements());
+            retryRunner.run(() -> {
+                failureSimulator.maybeFail("preparación " + eventId);
+                log.info("Procesando preparación para técnico {} en laboratorio {}. Requisitos: {}",
+                        payload.getTechnicianId(), payload.getLabId(), payload.getRequirements());
+            });
             processedEvents.add(eventId);
             channel.basicAck(tag, false);
         } catch (Exception exception) {
-            log.error("Error procesando mensaje de preparación", exception);
+            log.error("[→ DLX] No se pudo procesar la preparación, se envía a la DLQ", exception);
             channel.basicNack(tag, false, false);
         }
     }

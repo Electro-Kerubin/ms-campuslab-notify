@@ -31,6 +31,12 @@
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
 
+        <!-- Endpoint interno de estado de las DLQ (lo consume el BFF) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
         <!-- RabbitMQ -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
