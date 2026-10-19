@@ -3,7 +3,7 @@ package org.campuslab.notify.service;
 import java.time.Instant;
 import java.util.List;
 
-import org.campuslab.notify.config.RabbitMQConfig;
+import org.campuslab.notify.config.MessagingProperties;
 import org.campuslab.notify.dto.DlqStatus;
 import org.campuslab.notify.dto.DlqStatus.QueueStatus;
 import org.springframework.amqp.core.AmqpAdmin;
@@ -21,19 +21,20 @@ public class DlqStatusService {
     private record Flow(String label, String queue, String dlq) {
     }
 
-    private static final List<Flow> FLOWS = List.of(
-            new Flow("Email", RabbitMQConfig.EMAIL_QUEUE, RabbitMQConfig.EMAIL_DLQ),
-            new Flow("Preparación", RabbitMQConfig.PREP_QUEUE, RabbitMQConfig.PREP_DLQ),
-            new Flow("Voucher", RabbitMQConfig.VOUCHER_QUEUE, RabbitMQConfig.VOUCHER_DLQ));
-
+    private final List<Flow> flows;
     private final AmqpAdmin amqpAdmin;
 
-    public DlqStatusService(AmqpAdmin amqpAdmin) {
+    public DlqStatusService(AmqpAdmin amqpAdmin, MessagingProperties properties) {
         this.amqpAdmin = amqpAdmin;
+        MessagingProperties.Queues queues = properties.queues();
+        this.flows = List.of(
+                new Flow("Email", queues.email().name(), queues.email().dlq()),
+                new Flow("Preparación", queues.prep().name(), queues.prep().dlq()),
+                new Flow("Voucher", queues.voucher().name(), queues.voucher().dlq()));
     }
 
     public DlqStatus getStatus() {
-        List<QueueStatus> queues = FLOWS.stream()
+        List<QueueStatus> queues = flows.stream()
                 .map(flow -> new QueueStatus(
                         flow.label(), flow.queue(), flow.dlq(),
                         messageCount(flow.queue()), messageCount(flow.dlq())))

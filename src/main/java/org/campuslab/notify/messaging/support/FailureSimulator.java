@@ -1,4 +1,4 @@
-package com.campuslab.notify.application;
+package org.campuslab.notify.messaging.support;
 
 import java.util.concurrent.ThreadLocalRandom;
 

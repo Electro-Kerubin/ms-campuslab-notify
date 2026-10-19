@@ -2,7 +2,6 @@ package org.campuslab.notify;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.ComponentScan;
 
 /**
  * Notify Service Application
@@ -16,10 +15,10 @@ import org.springframework.context.annotation.ComponentScan;
  * - Generar PDFs de voucher/acta de devolución
  * - Implementar idempotencia y manejo de DLQ
  *
- * Nota: Este servicio no tiene BD propia ni expone endpoints públicos
+ * Nota: Este servicio no tiene BD propia; su único endpoint HTTP es interno y de solo
+ * lectura (estado de las DLQ, lo consume el BFF)
  */
 @SpringBootApplication
-@ComponentScan(basePackages = {"org.campuslab.notify", "com.campuslab.notify"})
 public class NotifyServiceApplication {
 
     public static void main(String[] args) {
