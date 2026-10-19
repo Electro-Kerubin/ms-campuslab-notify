@@ -4,3 +4,24 @@ spring:
     port: ${RABBITMQ_PORT}
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASS}
+    listener:
+      simple:
+        # Ack manual: cada consumidor decide cuándo hacer ack / nack
+        acknowledge-mode: manual
+        # Un mensaje a la vez por consumidor (fair dispatch)
+        prefetch: 1
+
+# Puerto del endpoint interno de estado de las DLQ (bookings 8081, catalog 8082, report 8083)
+server:
+  port: ${SERVER_PORT:8084}
+
+campuslab:
+  notify:
+    # Reintentos con backoff exponencial antes de mandar el mensaje a la DLQ
+    retry:
+      max-attempts: 3        # 3 intentos en total
+      initial-interval: 1000 # 1 segundo
+      multiplier: 2.0        # duplica la espera en cada intento
+      max-interval: 10000    # 10 segundos máximo
+    # Solo para demostrar reintentos/DLQ: probabilidad (0.0 a 1.0) de que un mensaje falle. 0 = apagado.
+    simulated-failure-rate: ${NOTIFY_SIMULATED_FAILURE_RATE:0}

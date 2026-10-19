@@ -24,11 +24,15 @@ services:
     build: .
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    ports:
+      - "8084:8084"   # endpoint interno de estado de las DLQ (lo consume el BFF)
     environment:
       RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
       RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
+      # Solo para demo: probabilidad (0.0 a 1.0) de que un mensaje falle y termine en la DLQ
+      NOTIFY_SIMULATED_FAILURE_RATE: ${NOTIFY_SIMULATED_FAILURE_RATE:-0}
     depends_on:
       rabbitmq:
         condition: service_healthy

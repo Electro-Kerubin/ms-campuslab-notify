@@ -19,10 +19,17 @@ import org.springframework.stereotype.Service;
 public class VoucherConsumer {
 
     private final PdfGeneratorService pdfGeneratorService;
+    private final RetryRunner retryRunner;
+    private final FailureSimulator failureSimulator;
     private final Set<String> processedEvents = ConcurrentHashMap.newKeySet();
 
-    public VoucherConsumer(PdfGeneratorService pdfGeneratorService) {
+    public VoucherConsumer(
+            PdfGeneratorService pdfGeneratorService,
+            RetryRunner retryRunner,
+            FailureSimulator failureSimulator) {
         this.pdfGeneratorService = pdfGeneratorService;
+        this.retryRunner = retryRunner;
+        this.failureSimulator = failureSimulator;
     }
 
     @RabbitListener(queues = "q.cmd.voucher")
@@ -37,11 +44,14 @@ public class VoucherConsumer {
                 return;
             }
 
-            pdfGeneratorService.generateVoucher(envelope.getPayload());
+            retryRunner.run(() -> {
+                failureSimulator.maybeFail("voucher " + eventId);
+                pdfGeneratorService.generateVoucher(envelope.getPayload());
+            });
             processedEvents.add(eventId);
             channel.basicAck(tag, false);
         } catch (Exception exception) {
-            log.error("Error procesando mensaje de voucher", exception);
+            log.error("[→ DLX] No se pudo procesar el voucher, se envía a la DLQ", exception);
             channel.basicNack(tag, false, false);
         }
     }
