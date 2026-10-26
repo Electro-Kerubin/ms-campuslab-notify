@@ -1,5 +1,6 @@
 package org.campuslab.notify.config;
 
+import org.campuslab.notify.config.RabbitNamesProperties.Flow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Binding;
@@ -10,6 +11,7 @@ import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.RetryCallback;
@@ -18,7 +20,8 @@ import org.springframework.retry.RetryListener;
 import org.springframework.retry.support.RetryTemplate;
 
 /**
- * Topología RabbitMQ de notify.
+ * Topología RabbitMQ de notify. Los nombres de exchanges, colas y routing keys
+ * vienen de {@code campuslab.rabbit} en application.yml ({@link RabbitNamesProperties}).
  *
  * IMPORTANTE: ms-campuslab-bookings declara las mismas colas (ver su
  * RabbitTopologyConfig). RabbitMQ rechaza (PRECONDITION_FAILED) redeclarar una
@@ -26,25 +29,10 @@ import org.springframework.retry.support.RetryTemplate;
  * las colas se debe hacer idéntico en los dos servicios.
  */
 @Configuration
+@EnableConfigurationProperties(RabbitNamesProperties.class)
 public class RabbitMQConfig {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitMQConfig.class);
-
-    private static final String CMD_DIRECT_EXCHANGE = "cmd.direct";
-    private static final String CMD_TOPIC_EXCHANGE = "cmd.topic";
-    private static final String CMD_DEAD_EXCHANGE = "cmd.dead.dlx";
-
-    public static final String EMAIL_QUEUE = "q.cmd.email";
-    public static final String PREP_QUEUE = "q.cmd.prep";
-    public static final String VOUCHER_QUEUE = "q.cmd.voucher";
-
-    public static final String EMAIL_DLQ = "q.cmd.email.dlq";
-    public static final String PREP_DLQ = "q.cmd.prep.dlq";
-    public static final String VOUCHER_DLQ = "q.cmd.voucher.dlq";
-
-    private static final String EMAIL_DLQ_ROUTING_KEY = "email.dlq";
-    private static final String PREP_DLQ_ROUTING_KEY = "prep.dlq";
-    private static final String VOUCHER_DLQ_ROUTING_KEY = "voucher.dlq";
 
     // ---------- Políticas de retención ----------
 
@@ -55,92 +43,108 @@ public class RabbitMQConfig {
     // La DLQ conserva los mensajes fallidos 24 h para análisis y luego los borra
     private static final int DLQ_TTL_MS = 86_400_000;
 
+    private final RabbitNamesProperties names;
+
+    public RabbitMQConfig(RabbitNamesProperties names) {
+        this.names = names;
+    }
+
+    // ---------- Exchanges ----------
+
     @Bean
     public DirectExchange commandDirectExchange() {
-        return new DirectExchange(CMD_DIRECT_EXCHANGE);
+        return new DirectExchange(names.exchanges().direct());
     }
 
     @Bean
     public TopicExchange commandTopicExchange() {
-        return new TopicExchange(CMD_TOPIC_EXCHANGE);
+        return new TopicExchange(names.exchanges().topic());
     }
 
     @Bean
     public DirectExchange commandDeadLetterExchange() {
-        return new DirectExchange(CMD_DEAD_EXCHANGE);
+        return new DirectExchange(names.exchanges().deadLetter());
     }
+
+    // ---------- Colas principales ----------
 
     @Bean
     public Queue emailQueue() {
-        return mainQueue(EMAIL_QUEUE, EMAIL_DLQ_ROUTING_KEY);
+        return mainQueue(names.email());
     }
 
     @Bean
     public Queue prepQueue() {
-        return mainQueue(PREP_QUEUE, PREP_DLQ_ROUTING_KEY);
+        return mainQueue(names.prep());
     }
 
     @Bean
     public Queue voucherQueue() {
-        return mainQueue(VOUCHER_QUEUE, VOUCHER_DLQ_ROUTING_KEY);
+        return mainQueue(names.voucher());
     }
+
+    // ---------- DLQ ----------
 
     @Bean
     public Queue emailDeadLetterQueue() {
-        return deadLetterQueue(EMAIL_DLQ);
+        return deadLetterQueue(names.email());
     }
 
     @Bean
     public Queue prepDeadLetterQueue() {
-        return deadLetterQueue(PREP_DLQ);
+        return deadLetterQueue(names.prep());
     }
 
     @Bean
     public Queue voucherDeadLetterQueue() {
-        return deadLetterQueue(VOUCHER_DLQ);
+        return deadLetterQueue(names.voucher());
     }
+
+    // ---------- Bindings: cada cola se une al exchange direct y al topic ----------
 
     @Bean
     public Binding emailDirectBinding(Queue emailQueue, DirectExchange commandDirectExchange) {
         return BindingBuilder.bind(emailQueue)
                 .to(commandDirectExchange)
-                .with("email.send");
+                .with(names.email().routingKey());
     }
 
     @Bean
     public Binding emailTopicBinding(Queue emailQueue, TopicExchange commandTopicExchange) {
         return BindingBuilder.bind(emailQueue)
                 .to(commandTopicExchange)
-                .with("email.*");
+                .with(names.email().topicPattern());
     }
 
     @Bean
     public Binding prepDirectBinding(Queue prepQueue, DirectExchange commandDirectExchange) {
         return BindingBuilder.bind(prepQueue)
                 .to(commandDirectExchange)
-                .with("prep.ticket");
+                .with(names.prep().routingKey());
     }
 
     @Bean
     public Binding prepTopicBinding(Queue prepQueue, TopicExchange commandTopicExchange) {
         return BindingBuilder.bind(prepQueue)
                 .to(commandTopicExchange)
-                .with("prep.#");
+                .with(names.prep().topicPattern());
     }
 
     @Bean
     public Binding voucherDirectBinding(Queue voucherQueue, DirectExchange commandDirectExchange) {
         return BindingBuilder.bind(voucherQueue)
                 .to(commandDirectExchange)
-                .with("voucher.gen");
+                .with(names.voucher().routingKey());
     }
 
     @Bean
     public Binding voucherTopicBinding(Queue voucherQueue, TopicExchange commandTopicExchange) {
         return BindingBuilder.bind(voucherQueue)
                 .to(commandTopicExchange)
-                .with("voucher.*");
+                .with(names.voucher().topicPattern());
     }
+
+    // ---------- Bindings de las DLQ al exchange de dead letters ----------
 
     @Bean
     public Binding emailDeadLetterBinding(
@@ -148,7 +152,7 @@ public class RabbitMQConfig {
             DirectExchange commandDeadLetterExchange) {
         return BindingBuilder.bind(emailDeadLetterQueue)
                 .to(commandDeadLetterExchange)
-                .with(EMAIL_DLQ_ROUTING_KEY);
+                .with(names.email().deadLetterRoutingKey());
     }
 
     @Bean
@@ -157,7 +161,7 @@ public class RabbitMQConfig {
             DirectExchange commandDeadLetterExchange) {
         return BindingBuilder.bind(prepDeadLetterQueue)
                 .to(commandDeadLetterExchange)
-                .with(PREP_DLQ_ROUTING_KEY);
+                .with(names.prep().deadLetterRoutingKey());
     }
 
     @Bean
@@ -166,7 +170,7 @@ public class RabbitMQConfig {
             DirectExchange commandDeadLetterExchange) {
         return BindingBuilder.bind(voucherDeadLetterQueue)
                 .to(commandDeadLetterExchange)
-                .with(VOUCHER_DLQ_ROUTING_KEY);
+                .with(names.voucher().deadLetterRoutingKey());
     }
 
     @Bean
@@ -203,18 +207,18 @@ public class RabbitMQConfig {
     }
 
     // Cola principal: durable, con TTL, tope de largo y DLX para los mensajes que fallan o expiran
-    private Queue mainQueue(String name, String deadLetterRoutingKey) {
-        return QueueBuilder.durable(name)
+    private Queue mainQueue(Flow flow) {
+        return QueueBuilder.durable(flow.queue())
                 .ttl(MAIN_QUEUE_TTL_MS)
                 .maxLength(MAIN_QUEUE_MAX_LENGTH)
-                .deadLetterExchange(CMD_DEAD_EXCHANGE)
-                .deadLetterRoutingKey(deadLetterRoutingKey)
+                .deadLetterExchange(names.exchanges().deadLetter())
+                .deadLetterRoutingKey(flow.deadLetterRoutingKey())
                 .build();
     }
 
     // DLQ: destino final de los mensajes fallidos, con retención de 24 h
-    private Queue deadLetterQueue(String name) {
-        return QueueBuilder.durable(name)
+    private Queue deadLetterQueue(Flow flow) {
+        return QueueBuilder.durable(flow.deadLetterQueue())
                 .ttl(DLQ_TTL_MS)
                 .build();
     }

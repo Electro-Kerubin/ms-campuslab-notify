@@ -25,7 +25,7 @@ public class NotificationConsumer {
     private final FailureSimulator failureSimulator;
     private final Set<String> processedEvents = ConcurrentHashMap.newKeySet();
 
-    @RabbitListener(queues = "q.cmd.email")
+    @RabbitListener(queues = "${campuslab.rabbit.email.queue}")
     public void consumeEmail(
             MessageEnvelope<EmailPayload> envelope,
             Channel channel,
@@ -50,7 +50,7 @@ public class NotificationConsumer {
         }
     }
 
-    @RabbitListener(queues = "q.cmd.prep")
+    @RabbitListener(queues = "${campuslab.rabbit.prep.queue}")
     public void consumePreparation(
             MessageEnvelope<PrepPayload> envelope,
             Channel channel,

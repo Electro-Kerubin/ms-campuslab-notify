@@ -32,7 +32,7 @@ public class VoucherConsumer {
         this.failureSimulator = failureSimulator;
     }
 
-    @RabbitListener(queues = "q.cmd.voucher")
+    @RabbitListener(queues = "${campuslab.rabbit.voucher.queue}")
     public void consumeVoucher(
             MessageEnvelope<VoucherPayload> envelope,
             Channel channel,
