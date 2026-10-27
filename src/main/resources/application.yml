@@ -1,7 +1,10 @@
 spring:
   rabbitmq:
-    host: ${RABBITMQ_HOST}
-    port: ${RABBITMQ_PORT}
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    # Varios nodos del clúster, separados por coma (host1:5672,host2:5672). Si se define, reemplaza a host/port
+    # y el cliente se reconecta solo al siguiente nodo cuando uno cae.
+    addresses: ${RABBITMQ_ADDRESSES:}
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASS}
     listener:
@@ -16,34 +19,49 @@ server:
   port: ${SERVER_PORT:8084}
 
 campuslab:
-  # Nombres de la topología RabbitMQ (única fuente en el servicio, ver RabbitNamesProperties).
-  # ms-campuslab-bookings tiene este mismo bloque: si se cambia un nombre, cambiarlo en los dos.
-  rabbit:
+  # ---------------------------------------------------------------------------
+  # Topología RabbitMQ: ÚNICO lugar donde se definen nombres de exchanges, colas
+  # y routing keys. El código Java (config, consumidores, productor) los lee de
+  # aquí; no hay nombres escritos a mano.
+  #
+  # IMPORTANTE: este bloque debe ser IDÉNTICO en ms-campuslab-bookings (que
+  # también declara la topología). RabbitMQ rechaza redeclarar una cola con
+  # argumentos distintos (PRECONDITION_FAILED).
+  # ---------------------------------------------------------------------------
+  messaging:
     exchanges:
-      direct: cmd.direct           # comandos con routing key exacta
-      topic: cmd.topic             # comandos por patrón
-      dead-letter: cmd.dead.dlx    # destino de los mensajes rechazados o expirados
-    # Email/push al estudiante
-    email:
-      queue: q.cmd.email
-      dead-letter-queue: q.cmd.email.dlq
-      routing-key: email.send
-      topic-pattern: "email.*"
-      dead-letter-routing-key: email.dlq
-    # Ticket de preparación de sala/equipo para el técnico
-    prep:
-      queue: q.cmd.prep
-      dead-letter-queue: q.cmd.prep.dlq
-      routing-key: prep.ticket
-      topic-pattern: "prep.#"
-      dead-letter-routing-key: prep.dlq
-    # PDF de vale de retiro / acta de devolución
-    voucher:
-      queue: q.cmd.voucher
-      dead-letter-queue: q.cmd.voucher.dlq
-      routing-key: voucher.gen
-      topic-pattern: "voucher.*"
-      dead-letter-routing-key: voucher.dlq
+      direct: cmd.direct
+      topic: cmd.topic
+      dead-letter: cmd.dead.dlx
+    queues:
+      email:
+        name: q.cmd.email
+        dlq: q.cmd.email.dlq
+        direct-routing-key: email.send
+        topic-routing-key: "email.*"
+        dlq-routing-key: email.dlq
+      prep:
+        name: q.cmd.prep
+        dlq: q.cmd.prep.dlq
+        direct-routing-key: prep.ticket
+        topic-routing-key: "prep.#"
+        dlq-routing-key: prep.dlq
+      voucher:
+        name: q.cmd.voucher
+        dlq: q.cmd.voucher.dlq
+        direct-routing-key: voucher.gen
+        topic-routing-key: "voucher.*"
+        dlq-routing-key: voucher.dlq
+    retention:
+      queue-ttl-ms: 30000        # un comando que nadie consume en 30 s expira y va a la DLQ
+      queue-max-length: 1000     # sobre 1000 mensajes, los más antiguos van a la DLQ
+      dlq-ttl-ms: 86400000       # la DLQ conserva los fallidos 24 h para análisis
+    idempotency:
+      max-tracked-events: 10000  # eventId recordados por flujo para descartar duplicados
+    # classic: cada cola vive en UN nodo del clúster. quorum: réplicas en varios nodos (tolera la caída de uno
+    # solo con 3 o más nodos). Cambiarlo exige borrar antes las colas ya declaradas. Idéntico en notify y bookings.
+    queue-type: ${RABBITMQ_QUEUE_TYPE:classic}
+
   notify:
     # Reintentos con backoff exponencial antes de mandar el mensaje a la DLQ
     retry:
@@ -51,5 +69,12 @@ campuslab:
       initial-interval: 1000 # 1 segundo
       multiplier: 2.0        # duplica la espera en cada intento
       max-interval: 10000    # 10 segundos máximo
+    # Monitor de las DLQ: cada cierto tiempo lee los mensajes fallidos y registra en el log, una vez por mensaje, de dónde
+    # venían y por qué murieron. Los devuelve a la cola (no los consume): siguen disponibles para analizarlos.
+    dlq-monitor:
+      enabled: ${NOTIFY_DLQ_MONITOR_ENABLED:true}
+      initial-delay-ms: 15000
+      interval-ms: 30000       # cada cuánto revisa las 3 DLQ
+      max-per-poll: 200        # máximo de mensajes que lee de cada DLQ por revisión
     # Solo para demostrar reintentos/DLQ: probabilidad (0.0 a 1.0) de que un mensaje falle. 0 = apagado.
     simulated-failure-rate: ${NOTIFY_SIMULATED_FAILURE_RATE:0}

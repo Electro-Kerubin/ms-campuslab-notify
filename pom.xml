@@ -49,6 +49,12 @@
             <artifactId>spring-boot-starter-json</artifactId>
         </dependency>
 
+        <!-- Validación del payload de los mensajes y de la configuración de mensajería -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
         <!-- Email -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

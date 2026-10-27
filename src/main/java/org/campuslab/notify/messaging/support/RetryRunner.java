@@ -1,12 +1,12 @@
-package com.campuslab.notify.application;
+package org.campuslab.notify.messaging.support;
 
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Ejecuta el procesamiento de un mensaje con reintentos y backoff exponencial.
- * Si tras el último intento sigue fallando, relanza la excepción para que el
- * consumidor haga nack (sin requeue) y el mensaje pase a la DLQ.
+ * Ejecuta el procesamiento de un mensaje con reintentos y backoff exponencial
+ * (ver ConsumerRetryConfig). Si tras el último intento sigue fallando, relanza la
+ * excepción para que el consumidor decida el destino del mensaje (DLQ).
  */
 @Component
 public class RetryRunner {
