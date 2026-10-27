@@ -13,7 +13,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Topología RabbitMQ de notify: exchanges, colas y bindings de cada caso de uso.
+ * Topología RabbitMQ de notify: exchanges, colas y bindings de cada caso de
+ * uso.
  * Los nombres NO están aquí: vienen de application.yml (campuslab.messaging.*),
  * ver {@link MessagingProperties}.
  *
@@ -31,11 +32,14 @@ import org.springframework.context.annotation.Configuration;
  *
  * Cuándo se usa cada exchange:
  * <ul>
- *   <li><b>cmd.direct</b>: comandos punto a punto (email, preparación). Un solo destino; la routing key
- *       tiene que ser exactamente la del binding (email.send, prep.ticket).</li>
- *   <li><b>cmd.topic</b>: familias con subtipos (voucher). Los bindings son patrones (voucher.* recibe
- *       voucher.retiro y voucher.devolucion); otra cola puede enlazarse solo a voucher.devolucion y recibir
- *       esa misma publicación, algo que direct no permite.</li>
+ * <li><b>cmd.direct</b>: comandos punto a punto (email, preparación). Un solo
+ * destino; la routing key
+ * tiene que ser exactamente la del binding (email.send, prep.ticket).</li>
+ * <li><b>cmd.topic</b>: familias con subtipos (voucher). Los bindings son
+ * patrones (voucher.* recibe
+ * voucher.retiro y voucher.devolucion); otra cola puede enlazarse solo a
+ * voucher.devolucion y recibir
+ * esa misma publicación, algo que direct no permite.</li>
  * </ul>
  *
  * IMPORTANTE: ms-campuslab-bookings declara las mismas colas (ver su
@@ -68,13 +72,15 @@ public class RabbitMQConfig {
         return new TopicExchange(properties.exchanges().topic());
     }
 
-    // Recibe los mensajes que "mueren" en las colas principales y los reparte a cada DLQ
+    // Recibe los mensajes que "mueren" en las colas principales y los reparte a
+    // cada DLQ
     @Bean
     public DirectExchange commandDeadLetterExchange() {
         return new DirectExchange(properties.exchanges().deadLetter());
     }
 
-    // ---------- Colas principales (durables, con TTL, tope de largo y DLX) ----------
+    // ---------- Colas principales (durables, con TTL, tope de largo y DLX)
+    // ----------
 
     @Bean
     public Queue emailQueue() {
@@ -187,9 +193,12 @@ public class RabbitMQConfig {
 
     // ---------- Construcción de colas ----------
 
-    // Cola principal: durable, con TTL, tope de largo y DLX para los mensajes que fallan o expiran.
-    // maxLength(int) está deprecado, pero se mantiene a propósito: RabbitMQ compara también el
-    // TIPO de cada argumento al redeclarar, y las colas ya existentes se declararon con enteros.
+    // Cola principal: durable, con TTL, tope de largo y DLX para los mensajes que
+    // fallan o expiran.
+    // maxLength(int) está deprecado, pero se mantiene a propósito: RabbitMQ compara
+    // también el
+    // TIPO de cada argumento al redeclarar, y las colas ya existentes se declararon
+    // con enteros.
     @SuppressWarnings("deprecation")
     private Queue mainQueue(Flow flow) {
         return durable(flow.name())
@@ -200,14 +209,16 @@ public class RabbitMQConfig {
                 .build();
     }
 
-    // DLQ: durable, con retención para poder analizar los fallidos antes de que el TTL los borre
+    // DLQ: durable, con retención para poder analizar los fallidos antes de que el
+    // TTL los borre
     private Queue deadLetterQueue(Flow flow) {
         return durable(flow.dlq())
                 .ttl(properties.retention().dlqTtlMs())
                 .build();
     }
 
-    // Cola durable del tipo configurado (campuslab.messaging.queue-type): classic o quorum
+    // Cola durable del tipo configurado (campuslab.messaging.queue-type): classic o
+    // quorum
     private QueueBuilder durable(String name) {
         QueueBuilder builder = QueueBuilder.durable(name);
         return properties.quorum() ? builder.quorum() : builder;
