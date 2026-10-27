@@ -33,6 +33,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -98,6 +99,11 @@ class NotifyBrokerFlowTest {
     @Autowired
     private AmqpAdmin amqpAdmin;
     @Autowired
+    private RabbitListenerEndpointRegistry listenerRegistry;
+
+    // El contexto de Spring sigue vivo al terminar la clase; se guarda el registro para detener sus listeners antes de limpiar
+    private static RabbitListenerEndpointRegistry registry;
+    @Autowired
     private MockMvc mockMvc;
 
     private static boolean brokerReachable() {
@@ -120,6 +126,11 @@ class NotifyBrokerFlowTest {
         if (!brokerReachable()) {
             return;   // la clase se omitió en @BeforeAll: no hay nada que limpiar (y @AfterAll corre igual)
         }
+        // Sin esto, al borrar las colas los listeners (que siguen conectados) reconectan y el RabbitAdmin de la
+        // aplicación las vuelve a declarar: la topología de prueba quedaba en el broker después de cada ejecución.
+        if (registry != null) {
+            registry.stop();
+        }
         CachingConnectionFactory connectionFactory = new CachingConnectionFactory(HOST, PORT);
         connectionFactory.setUsername(USER);
         connectionFactory.setPassword(PASS);
@@ -139,6 +150,7 @@ class NotifyBrokerFlowTest {
 
     @BeforeEach
     void resetMock() {
+        registry = listenerRegistry;
         reset(emailService);
         amqpAdmin.purgeQueue(EMAIL_QUEUE);
         amqpAdmin.purgeQueue(EMAIL_DLQ);
