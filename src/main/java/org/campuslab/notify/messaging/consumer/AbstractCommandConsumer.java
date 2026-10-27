@@ -30,7 +30,8 @@ import org.springframework.retry.backoff.BackOffInterruptedException;
  *                                                    rejectManual=true por defecto)    DLX -> DLQ
  * </pre>
  *
- * Los mensajes que llegan a la DLQ no se consumen: se conservan 24 h para analizarlos y
+ * Los mensajes que llegan a la DLQ no se consumen: se conservan 24 h para analizarlos,
+ * {@code DlqMonitor} los registra en el log (una vez, con origen y motivo) y
  * {@code DlqStatusService} los cuenta para la alerta del frontend.
  *
  * Cada subclase corresponde a un dominio (email, preparación, voucher): declara su

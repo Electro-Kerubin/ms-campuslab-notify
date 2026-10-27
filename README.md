@@ -244,3 +244,84 @@ src/
 
 **Última actualización:** *(actualizar en cada cambio relevante)*
 # ms-campuslab-notify
+
+Microservicio **consumidor de comandos** de CampusLab: recibe por RabbitMQ lo que publica `ms-campuslab-bookings` y ejecuta el trabajo
+(email al estudiante, ticket de preparación para el técnico, PDF de vale o acta). Expone solo un endpoint interno de estado de las DLQ.
+
+## Colas y consumidores
+
+| Caso de uso | Cola | Consumidor (`@RabbitListener`, ACK manual) | Servicio de negocio | DLQ |
+|---|---|---|---|---|
+| Aviso al estudiante | `q.cmd.email` | `EmailConsumer` | `EmailNotificationService` | `q.cmd.email.dlq` |
+| Preparación de sala / equipo | `q.cmd.prep` | `PrepTicketConsumer` | `PrepTicketService` | `q.cmd.prep.dlq` |
+| Vale de retiro / acta de devolución | `q.cmd.voucher` | `VoucherConsumer` | `PdfGeneratorService` | `q.cmd.voucher.dlq` |
+
+Los nombres de exchanges, colas y routing keys viven solo en `application.yml` (`campuslab.messaging.*`) y el bloque debe ser idéntico en bookings.
+Cuándo se usa cada exchange: `cmd.direct` para comandos punto a punto (email, preparación) y `cmd.topic` para el voucher, que tiene subtipos
+(`voucher.retiro`, `voucher.devolucion`); el detalle está en el README de `ms-campuslab-mq-admin`.
+
+## Confirmación (ACK) y errores
+
+Cada mensaje termina siempre en una confirmación explícita al broker (política en `AbstractCommandConsumer`):
+
+| Situación | Decisión | Destino |
+|---|---|---|
+| Procesado correctamente | `basicAck` | se elimina de la cola |
+| `eventId` ya procesado (re-entrega) | `basicAck`, sin reprocesar | se elimina |
+| Payload inválido o error de negocio | `basicNack` sin reencolar, sin reintentos | DLX → DLQ |
+| Falla recuperable (timeout, servicio externo) | 3 intentos con backoff exponencial (1 s, 2 s); si se agotan, `basicNack` | DLX → DLQ |
+| Apagado durante un reintento | `basicNack` con reencolado | vuelve a la cola |
+| JSON ilegible | lo rechaza el contenedor de Spring | DLX → DLQ |
+
+Un mensaje también llega a la DLQ **sin que el consumidor lo toque** cuando nadie lo consume dentro del TTL de la cola (30 s, motivo `expired`)
+o cuando la cola supera su largo máximo (1000, motivo `maxlen`). Las DLQ conservan los mensajes 24 h.
+
+## Qué se hace con los mensajes de las DLQ
+
+`DlqMonitor` (paquete `messaging.dlq`) revisa las tres DLQ cada 30 s y deja en el log, **una sola vez por mensaje**, lo necesario para analizar la falla.
+Los **inspecciona sin consumirlos**: cada mensaje leído se devuelve a la cola (`basicNack` con requeue). Así siguen disponibles para analizarlos o reprocesarlos
+desde la Management UI y el endpoint de estado los sigue contando. Un listener que los confirmara los borraría y se perdería esa evidencia.
+
+Línea de log (nivel `WARN`, una por mensaje):
+
+```
+[DLQ] mensaje fallido dlq=q.cmd.email.dlq origen=q.cmd.email motivo=rejected veces=1 exchange=cmd.direct routingKey=[email.send]
+      eventId=e5dcab81-... type=email.send traceId=f8ed3e86-... encoladoEn=2026-10-27T03:04:23Z payload={"bookingId":1,"to":"esto-no-es-un-email"}
+[DLQ] q.cmd.email.dlq: 1 mensaje(s) nuevo(s) registrado(s); 4 en total esperan análisis          (nivel INFO)
+```
+
+| Campo | Qué dice |
+|---|---|
+| `origen` | cola principal de la que venía |
+| `motivo` | `rejected` (lo rechazó el consumidor), `expired` (venció el TTL) o `maxlen` (cola llena) |
+| `veces` | cuántas veces murió por ese motivo |
+| `exchange` / `routingKey` | por dónde se publicó originalmente |
+| `eventId` / `type` / `traceId` | identifican el mensaje (`?` si el JSON era ilegible) |
+| `encoladoEn` | cuándo llegó a la DLQ |
+| `payload` | contenido, en una línea y acotado a 300 caracteres |
+
+Si el broker no responde, el monitor lo anota (`no se pudo revisar ...`) y lo reintenta en la siguiente vuelta; nunca tumba la aplicación.
+
+### Cómo reprocesar un mensaje
+En la Management UI abrir la DLQ → *Get messages* para ver el original; corregir la causa y volver a publicarlo en `cmd.direct` con la routing key del caso de uso.
+Para descartarlo, *Purge* de la DLQ (o esperar a que lo borre el TTL de 24 h).
+
+## Configuración
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `RABBITMQ_HOST` / `RABBITMQ_PORT` | `localhost` / `5672` | broker (un nodo) |
+| `RABBITMQ_ADDRESSES` | vacío | varios nodos del clúster: `host1:5672,host2:5672` (reemplaza a host/port) |
+| `RABBITMQ_USER` / `RABBITMQ_PASS` | — | credenciales |
+| `RABBITMQ_QUEUE_TYPE` | `classic` | `classic` o `quorum` (igual en bookings; cambiarlo exige borrar las colas) |
+| `NOTIFY_DLQ_MONITOR_ENABLED` | `true` | apaga el monitor de DLQ |
+| `campuslab.notify.dlq-monitor.interval-ms` | `30000` | cada cuánto revisa las DLQ |
+| `campuslab.notify.dlq-monitor.max-per-poll` | `200` | máximo de mensajes que lee de cada DLQ por revisión |
+| `NOTIFY_SIMULATED_FAILURE_RATE` | `0` | solo para demostrar reintentos y DLQ (0.0 a 1.0) |
+| `SERVER_PORT` | `8084` | endpoint de estado: `GET /api/notify/dlq` |
+
+## Pruebas
+
+`mvn test` ejecuta unitarias y, si hay un RabbitMQ en `RABBITMQ_HOST:RABBITMQ_PORT`, también las que usan broker real
+(`NotifyBrokerFlowTest`: ACK, duplicados, DLQ, reintentos, JSON ilegible y registro del monitor). Sin broker esas pruebas se omiten solas.
+Usan topología aislada y la borran al terminar.

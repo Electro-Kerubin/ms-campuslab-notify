@@ -13,7 +13,8 @@ import org.springframework.stereotype.Service;
 /**
  * Consulta a RabbitMQ cuántos mensajes hay en cada cola principal y en su DLQ.
  * Los mensajes de la DLQ no se consumen: quedan ahí 24 h para poder analizarlos
- * (por ejemplo desde la Management UI) hasta que los borra el TTL.
+ * (por ejemplo desde la Management UI) hasta que los borra el TTL. Cada uno se registra en el log una vez,
+ * con su origen y motivo, por {@code messaging.dlq.DlqMonitor}.
  */
 @Service
 public class DlqStatusService {

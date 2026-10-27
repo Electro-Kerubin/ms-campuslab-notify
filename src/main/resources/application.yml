@@ -69,5 +69,12 @@ campuslab:
       initial-interval: 1000 # 1 segundo
       multiplier: 2.0        # duplica la espera en cada intento
       max-interval: 10000    # 10 segundos máximo
+    # Monitor de las DLQ: cada cierto tiempo lee los mensajes fallidos y registra en el log, una vez por mensaje, de dónde
+    # venían y por qué murieron. Los devuelve a la cola (no los consume): siguen disponibles para analizarlos.
+    dlq-monitor:
+      enabled: ${NOTIFY_DLQ_MONITOR_ENABLED:true}
+      initial-delay-ms: 15000
+      interval-ms: 30000       # cada cuánto revisa las 3 DLQ
+      max-per-poll: 200        # máximo de mensajes que lee de cada DLQ por revisión
     # Solo para demostrar reintentos/DLQ: probabilidad (0.0 a 1.0) de que un mensaje falle. 0 = apagado.
     simulated-failure-rate: ${NOTIFY_SIMULATED_FAILURE_RATE:0}

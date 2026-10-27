@@ -28,6 +28,11 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.campuslab.notify.messaging.dlq.DlqMonitor;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
@@ -87,6 +92,9 @@ class NotifyBrokerFlowTest {
             registry.add("campuslab.messaging.queues." + flow + ".dlq-routing-key", () -> flow + ".dlq." + SUFFIX);
         }
         // reintentos rápidos para que el test no dure segundos de más (3 intentos igual que en producción)
+        // el monitor de DLQ solo corre cuando el test llama a poll(): sin ejecuciones programadas de por medio
+        registry.add("campuslab.notify.dlq-monitor.initial-delay-ms", () -> 3_600_000);
+        registry.add("campuslab.notify.dlq-monitor.interval-ms", () -> 3_600_000);
         registry.add("campuslab.notify.retry.initial-interval", () -> 100);
         registry.add("campuslab.notify.retry.max-interval", () -> 200);
     }
@@ -100,6 +108,8 @@ class NotifyBrokerFlowTest {
     private AmqpAdmin amqpAdmin;
     @Autowired
     private RabbitListenerEndpointRegistry listenerRegistry;
+    @Autowired
+    private DlqMonitor dlqMonitor;
 
     // El contexto de Spring sigue vivo al terminar la clase; se guarda el registro para detener sus listeners antes de limpiar
     private static RabbitListenerEndpointRegistry registry;
@@ -224,7 +234,38 @@ class NotifyBrokerFlowTest {
         assertThat(messages(EMAIL_QUEUE)).isZero();
     }
 
+    // ---------- Procesamiento de la DLQ ----------
+
+    @Test
+    void elMonitorDeDlqRegistraElMensajeFallidoUnaSolaVezYLoDejaEnLaDlq() {
+        Logger monitorLog = (Logger) LoggerFactory.getLogger(DlqMonitor.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        monitorLog.addAppender(logs);
+        try {
+            send("email.send", envelope("evt-dlq-log", Map.of("bookingId", 3, "to", "esto-no-es-un-email")));
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(messages(EMAIL_DLQ)).isEqualTo(1));
+
+            dlqMonitor.poll();
+            assertThat(linesAbout(logs, "evt-dlq-log")).hasSize(1).first().asString()
+                    .contains("dlq=" + EMAIL_DLQ, "origen=" + EMAIL_QUEUE, "motivo=rejected", "eventId=evt-dlq-log",
+                            "routingKey=[email.send]", "esto-no-es-un-email");
+
+            // una segunda revisión no repite la línea...
+            dlqMonitor.poll();
+            assertThat(linesAbout(logs, "evt-dlq-log")).hasSize(1);
+            // ...y el mensaje sigue en la DLQ: se inspeccionó, no se consumió
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(messages(EMAIL_DLQ)).isEqualTo(1));
+        } finally {
+            monitorLog.detachAppender(logs);
+        }
+    }
+
     // ---------- helpers ----------
+
+    private static List<String> linesAbout(ListAppender<ILoggingEvent> logs, String eventId) {
+        return logs.list.stream().map(ILoggingEvent::getFormattedMessage).filter(m -> m.contains(eventId)).toList();
+    }
 
     private void send(String routingKey, Map<String, Object> envelope) {
         rabbitTemplate.convertAndSend(DIRECT, routingKey, envelope);
