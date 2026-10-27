@@ -29,6 +29,15 @@ import org.springframework.context.annotation.Configuration;
  *                cmd.topic       voucher.*
  * </pre>
  *
+ * Cuándo se usa cada exchange:
+ * <ul>
+ *   <li><b>cmd.direct</b>: comandos punto a punto (email, preparación). Un solo destino; la routing key
+ *       tiene que ser exactamente la del binding (email.send, prep.ticket).</li>
+ *   <li><b>cmd.topic</b>: familias con subtipos (voucher). Los bindings son patrones (voucher.* recibe
+ *       voucher.retiro y voucher.devolucion); otra cola puede enlazarse solo a voucher.devolucion y recibir
+ *       esa misma publicación, algo que direct no permite.</li>
+ * </ul>
+ *
  * IMPORTANTE: ms-campuslab-bookings declara las mismas colas (ver su
  * RabbitTopologyConfig). RabbitMQ rechaza (PRECONDITION_FAILED) redeclarar una
  * cola con argumentos distintos, así que el bloque campuslab.messaging del
