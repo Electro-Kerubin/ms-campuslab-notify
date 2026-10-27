@@ -25,7 +25,7 @@ class RabbitMQConfigTest {
             new Exchanges("x.direct", "x.topic", "x.dead"),
             new Queues(EMAIL, PREP, VOUCHER),
             new Retention(1234, 99, 5678),
-            new Idempotency(10)));
+            new Idempotency(10), "classic"));
 
     @Test
     void losExchangesTomanSuNombreDeLasPropiedades() {

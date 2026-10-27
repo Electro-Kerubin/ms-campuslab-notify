@@ -98,4 +98,54 @@ class MessagingConfigurationTest {
                 .withUserConfiguration(RabbitMQConfig.class)
                 .run(context -> assertThat(context).hasFailed());
     }
+
+    // ---------- Alta disponibilidad: tipo de cola y varios nodos ----------
+
+    @org.springframework.boot.context.properties.EnableConfigurationProperties(
+            org.springframework.boot.autoconfigure.amqp.RabbitProperties.class)
+    static class RabbitPropertiesConfig {
+    }
+
+    @Test
+    void porDefectoLasColasSonClassicYSinArgumentoDeTipo() {
+        runner.run(context -> {
+            assertThat(context.getBean(MessagingProperties.class).quorum()).isFalse();
+            context.getBeansOfType(Queue.class).values()
+                    .forEach(q -> assertThat(q.getArguments()).doesNotContainKey("x-queue-type"));
+        });
+    }
+
+    @Test
+    void conQueueTypeQuorumTodasLasColasIncluidasLasDlqSeDeclaranQuorum() {
+        runner.withPropertyValues("campuslab.messaging.queue-type=quorum").run(context -> {
+            assertThat(context.getBeansOfType(Queue.class)).hasSize(6);
+            context.getBeansOfType(Queue.class).values()
+                    .forEach(q -> assertThat(q.getArguments()).containsEntry("x-queue-type", "quorum"));
+            // la retención y el dead letter siguen igual
+            Queue email = context.getBean("emailQueue", Queue.class);
+            assertThat(email.getArguments()).containsEntry("x-message-ttl", 30_000)
+                    .containsEntry("x-dead-letter-exchange", "cmd.dead.dlx");
+        });
+    }
+
+    @Test
+    void unTipoDeColaInvalidoImpideArrancar() {
+        runner.withPropertyValues("campuslab.messaging.queue-type=mirrored").run(context ->
+                assertThat(context).hasFailed());
+    }
+
+    @Test
+    void sinAddressesElClienteUsaHostYPuertoPorDefecto() {
+        runner.withUserConfiguration(RabbitPropertiesConfig.class).run(context ->
+                assertThat(context.getBean(org.springframework.boot.autoconfigure.amqp.RabbitProperties.class)
+                        .determineAddresses()).isEqualTo("localhost:5672"));
+    }
+
+    @Test
+    void conRabbitmqAddressesElClienteConoceTodosLosNodosDelClusterEnOrden() {
+        runner.withUserConfiguration(RabbitPropertiesConfig.class)
+                .withPropertyValues("spring.rabbitmq.addresses=nodo1:5672,nodo2:5672")
+                .run(context -> assertThat(context.getBean(org.springframework.boot.autoconfigure.amqp.RabbitProperties.class)
+                        .determineAddresses()).isEqualTo("nodo1:5672,nodo2:5672"));
+    }
 }

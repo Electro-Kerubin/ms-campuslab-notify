@@ -30,7 +30,7 @@ class DlqStatusServiceTest {
                         new Flow("q.prep", "q.prep.dlq", "k", "k", "k"),
                         new Flow("q.pdf", "q.pdf.dlq", "k", "k", "k")),
                 new Retention(1, 1, 1),
-                new Idempotency(1));
+                new Idempotency(1), "classic");
         service = new DlqStatusService(amqpAdmin, properties);
     }
 
