@@ -24,7 +24,6 @@ public class DlqStatusService {
     }
 
     private final List<Flow> flows;
-    private final List<Flow> flows;
     private final AmqpAdmin amqpAdmin;
 
     public DlqStatusService(AmqpAdmin amqpAdmin, MessagingProperties properties) {
@@ -37,7 +36,6 @@ public class DlqStatusService {
     }
 
     public DlqStatus getStatus() {
-        List<QueueStatus> queues = flows.stream()
         List<QueueStatus> queues = flows.stream()
                 .map(flow -> new QueueStatus(
                         flow.label(), flow.queue(), flow.dlq(),

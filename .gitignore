@@ -39,3 +39,9 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Archivos locales del entorno de desarrollo (no van al repositorio) ###
+.idea/
+.claude/
+*.log
+.env
